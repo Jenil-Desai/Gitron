@@ -91,7 +91,10 @@
 
 ## 📸 Demo & Screenshots
 
-_To be added._
+| Mockup | Login Screen | Repository Screen |
+|--------|--------------|-------------------|
+| ![](/screenshots/mockup.png) | ![](/screenshots/login.png "Login Screen") | ![](/screenshots/repos.png "Repo List Screen") |
+
 
 ---
 
