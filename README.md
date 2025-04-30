@@ -62,7 +62,7 @@
 
 1. Clone the repository:
    ```bash
-   git clone <repo_url>
+   git clone https://github.com/Jenil-Desai/Gitron.git
    ```
 2. Navigate to the project directory:
    ```bash
