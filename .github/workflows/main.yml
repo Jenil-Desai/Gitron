@@ -1,51 +1,76 @@
-name: Build Gitron Desktop App
+name: Build Gitron Desktop Binaries
 
+# Trigger on push to main or manual dispatch
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  build:
+  build-desktop:
+    # Run on all three OSes concurrently
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    
+
     steps:
-      - name: Checkout code
+      # 1. Checkout source code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Setup Flutter
+      # 2. Set up Flutter environment (Linux, Windows, macOS support)
+      - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.2' # replace with your Flutter version
-          channel: 'stable'
-          architecture: x64
+          flutter-version: '3.19.2'    # includes Dart ≥3.3.0
+          channel: stable
+          architecture: x64           # ensures consistent tooling on macOS Intel/ARM :contentReference[oaicite:5]{index=5}
 
+      # 3. Cache pub packages for speed
+      - name: Cache Flutter pub
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.pub-cache
+            ~/.flutter_cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      # 4. Enable desktop platforms (Linux/Windows/macOS)
+      - name: Enable desktop support
+        run: flutter config --enable-linux-desktop --enable-windows-desktop --enable-macos-desktop
+        shell: bash               # works on all matrix OSes :contentReference[oaicite:6]{index=6}
+
+      # 5. Install dependencies
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Enable desktop platforms
-        run: flutter config --enable-windows-desktop --enable-macos-desktop --enable-linux-desktop
-
-      - name: Build for platform
+      # 6. Build for the current OS
+      - name: Build desktop app
         run: |
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-            flutter build linux
-          elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            flutter build windows
-          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            flutter build macos
-          fi
-        shell: bash
+          case "${{ matrix.os }}" in
+            "ubuntu-latest")
+              flutter build linux --release
+              ;;
+            "windows-latest")
+              flutter build windows --release
+              ;;
+            "macos-latest")
+              flutter build macos --release
+              ;;
+          esac
+        shell: bash             # standard on all runners :contentReference[oaicite:7]{index=7}
 
-      - name: Upload artifact
+      # 7. Upload platform-specific artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Gitron-${{ matrix.os }}
           path: |
-            build/linux/x64/release/bundle/
-            build/windows/runner/Release/
-            build/macos/Build/Products/Release/Gitron.app
-          if-no-files-found: warn
+            build/linux/x64/release/bundle/**/*      # Linux binary :contentReference[oaicite:8]{index=8}
+            build/windows/runner/Release/**/*         # Windows .exe :contentReference[oaicite:9]{index=9}
+            build/macos/Build/Products/Release/*.app  # macOS .app bundle :contentReference[oaicite:10]{index=10}
+          if-no-files-found: error
