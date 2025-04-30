@@ -74,22 +74,22 @@ jobs:
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # required for authentication :contentReference[oaicite:0]{index=0}
+          GITHUB_TOKEN: ${{ secrets._GITHUB_TOKEN }}   # required for authentication :contentReference[oaicite:0]{index=0}
 
       - name: Download Linux artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Gitron-ubuntu-latest                   # must match artifact names above
           path: ./artifacts/linux
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Gitron-windows-latest
           path: ./artifacts/windows
 
       - name: Download macOS artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: Gitron-macos-latest
           path: ./artifacts/macos
