@@ -1,9 +1,9 @@
-name: Build Gitron Desktop Binaries
+name: CI & Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*.*.*'            # triggers on semver tags like v1.2.3
   workflow_dispatch:
 
 jobs:
@@ -12,57 +12,108 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-
+    outputs:
+      # Pass the artifact name back so the release job knows which to download
+      artifact-name: ${{ steps.set-art-name.outputs.artifact }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Setup Flutter SDK
-        uses: subosito/flutter-action@v2                   # Cross-platform Flutter Action :contentReference[oaicite:2]{index=2}
+        uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.3'                        # Bundles Dart 3.7.2 to satisfy flutter_lints :contentReference[oaicite:3]{index=3}
+          flutter-version: '3.29.3'
           channel: stable
           architecture: x64
-
-      - name: Cache Flutter pub
-        uses: actions/cache@v3                              # Speeds up pub get by caching dependencies :contentReference[oaicite:4]{index=4}
-        with:
-          path: ~/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
-          restore-keys: ${{ runner.os }}-pub-
 
       - name: Enable desktop support
         run: flutter config --enable-linux-desktop --enable-windows-desktop --enable-macos-desktop
         shell: bash
 
-      # ─── Ubuntu-specific system deps ───────────────────────────
-      - name: Install Linux build dependencies
+      - name: Install Linux deps
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev
-        shell: bash                                          # Installs GTK+ and other native tools :contentReference[oaicite:5]{index=5}
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+        shell: bash
 
-      - name: Install Flutter dependencies
+      - name: Get dependencies
         run: flutter pub get
 
-      - name: Build desktop app
+      - name: Build desktop
         run: |
           case "${{ matrix.os }}" in
-            "ubuntu-latest")  flutter build linux   --release ;;
-            "windows-latest") flutter build windows --release ;;
-            "macos-latest")   flutter build macos   --release ;;
+            ubuntu-latest)  flutter build linux --release   ;;
+            windows-latest) flutter build windows --release ;;
+            macos-latest)   flutter build macos --release   ;;
           esac
-        shell: bash                                         # Uses platform-specific Flutter build commands :contentReference[oaicite:6]{index=6}
+        shell: bash
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4                    # Store binaries in Actions UI :contentReference[oaicite:7]{index=7}
+      - name: Set artifact name
+        id: set-art-name
+        run: |
+          echo "::set-output name=artifact::Gitron-${{ matrix.os }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Gitron-${{ matrix.os }}
+          name: ${{ steps.set-art-name.outputs.artifact }}
           path: |
-            build/linux/x64/release/bundle/**/*           
-            build/windows/runner/Release/**/*              
-            build/macos/Build/Products/Release/*.app
-          if-no-files-found: error
+            build/linux/x64/release/bundle/**/*         # Linux bundle
+            build/windows/x64/runner/Release/*          # Windows .exe & data
+            build/macos/Build/Products/Release/*.app    # macOS .app bundle
+            
+  create-release:
+    needs: build-desktop
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}            # the pushed tag, e.g. v1.0.0
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # required for authentication :contentReference[oaicite:0]{index=0}
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: Gitron-ubuntu-latest                   # must match artifact names above
+          path: ./artifacts/linux
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: Gitron-windows-latest
+          path: ./artifacts/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: Gitron-macos-latest
+          path: ./artifacts/macos
+
+      - name: Upload Linux to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/linux
+          asset_name: Gitron-linux.zip
+          asset_content_type: application/zip
+
+      - name: Upload Windows to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/windows
+          asset_name: Gitron-windows.zip
+          asset_content_type: application/zip
+
+      - name: Upload macOS to Release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/macos
+          asset_name: Gitron-macos.zip
+          asset_content_type: application/zip
