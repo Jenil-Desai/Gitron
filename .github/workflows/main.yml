@@ -3,7 +3,7 @@ name: CI & Release
 on:
   push:
     tags:
-      - 'v*.*.*'            # triggers on semver tags like v1.2.3
+      - 'v*.*.*'  # e.g., v1.2.3
   workflow_dispatch:
 
 jobs:
@@ -12,54 +12,57 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    outputs:
-      # Pass the artifact name back so the release job knows which to download
-      artifact-name: ${{ steps.set-art-name.outputs.artifact }}
+
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Flutter SDK
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.29.3'
           channel: stable
           architecture: x64
 
-      - name: Enable desktop support
+      - name: Enable desktop platforms
         run: flutter config --enable-linux-desktop --enable-windows-desktop --enable-macos-desktop
-        shell: bash
 
-      - name: Install Linux deps
+      - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
-        shell: bash
 
-      - name: Get dependencies
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Build desktop
+      - name: Build Flutter desktop app
         run: |
           case "${{ matrix.os }}" in
-            ubuntu-latest)  flutter build linux --release   ;;
+            ubuntu-latest)  flutter build linux --release ;;
             windows-latest) flutter build windows --release ;;
-            macos-latest)   flutter build macos --release   ;;
+            macos-latest)   flutter build macos --release ;;
+          esac
+
+      - name: Package build output
+        run: |
+          mkdir -p dist
+          case "${{ matrix.os }}" in
+            ubuntu-latest)
+              zip -r dist/Gitron-linux.zip build/linux/x64/release/bundle/
+              ;;
+            windows-latest)
+              powershell Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/Gitron-windows.zip
+              ;;
+            macos-latest)
+              zip -r dist/Gitron-macos.zip build/macos/Build/Products/Release/*.app
+              ;;
           esac
         shell: bash
 
-      - name: Set artifact name
-        id: set-art-name
-        run: |
-          echo "::set-output name=artifact::Gitron-${{ matrix.os }}"
-
-      - name: Upload artifact
+      - name: Upload zipped artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.set-art-name.outputs.artifact }}
-          path: |
-            build/linux/x64/release/bundle/**/*         # Linux bundle
-            build/windows/x64/runner/Release/*          # Windows .exe & data
-            build/macos/Build/Products/Release/*.app    # macOS .app bundle
-            
+          name: Gitron-${{ matrix.os }}
+          path: dist/
+
   create-release:
     needs: build-desktop
     runs-on: ubuntu-latest
@@ -69,17 +72,17 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         with:
-          tag_name: ${{ github.ref_name }}            # the pushed tag, e.g. v1.0.0
+          tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets._GITHUB_TOKEN }}   # required for authentication :contentReference[oaicite:0]{index=0}
+          GITHUB_TOKEN: ${{ secrets._GITHUB_TOKEN }}
 
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: Gitron-ubuntu-latest                   # must match artifact names above
+          name: Gitron-ubuntu-latest
           path: ./artifacts/linux
 
       - name: Download Windows artifact
@@ -98,7 +101,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/linux
+          asset_path: ./artifacts/linux/Gitron-linux.zip
           asset_name: Gitron-linux.zip
           asset_content_type: application/zip
 
@@ -106,7 +109,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/windows
+          asset_path: ./artifacts/windows/Gitron-windows.zip
           asset_name: Gitron-windows.zip
           asset_content_type: application/zip
 
@@ -114,6 +117,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/macos
+          asset_path: ./artifacts/macos/Gitron-macos.zip
           asset_name: Gitron-macos.zip
           asset_content_type: application/zip
